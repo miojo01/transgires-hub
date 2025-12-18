@@ -79,6 +79,10 @@ export function DriverMenu({ driver }: { driver: any }) {
                  <Input name="licensePlate" defaultValue={driver.licensePlate} className="uppercase" required />
                </div>
                <div className="grid gap-2">
+                 <Label>Romaneio</Label>
+                 <Input name="romaneio" defaultValue={driver.romaneio || ""} required />
+                </div>
+               <div className="grid gap-2">
                  <Label>Modalidade</Label>
                  <Select name="type" defaultValue={driver.type}>
                     <SelectTrigger><SelectValue /></SelectTrigger>

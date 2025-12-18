@@ -1,43 +1,15 @@
-'use server'
+"use server"
 
-import { PrismaClient } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
+import { PrismaClient } from "@prisma/client"
 import { redirect } from "next/navigation"
-import bcrypt from "bcryptjs"
 
 const prisma = new PrismaClient()
 
-// --- AUTENTICAÇÃO REAL ---
-
-export async function register(formData: FormData) {
-  const name = formData.get("name") as string
-  const email = formData.get("email") as string
-  const password = formData.get("password") as string
-
-  if (!name || !email || !password) return { error: "Preencha tudo!" }
-
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing) return { error: "Email já cadastrado." }
-
-  const hashedPassword = await bcrypt.hash(password, 10)
-
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      password: hashedPassword,
-      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${name}`,
-      status: "ONLINE"
-    }
-  })
-
-  // CORREÇÃO AQUI: await cookies()
-  const cookieStore = await cookies()
-  cookieStore.set("userId", user.id)
-  
-  redirect("/")
-}
+// ==========================================
+// 1. AUTENTICAÇÃO E USUÁRIOS
+// ==========================================
 
 export async function login(formData: FormData) {
   const email = formData.get("email") as string
@@ -47,132 +19,231 @@ export async function login(formData: FormData) {
 
   const user = await prisma.user.findUnique({ where: { email } })
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return { error: "Email ou senha inválidos." }
+  if (!user || user.password !== password) {
+    return { error: "Email ou senha inválidos" }
   }
 
-  // CORREÇÃO AQUI: await cookies()
   const cookieStore = await cookies()
   cookieStore.set("userId", user.id)
-
+  
   redirect("/")
 }
 
+export async function register(formData: FormData) {
+  const name = formData.get("name") as string
+  const email = formData.get("email") as string
+  const password = formData.get("password") as string
+
+  if (!name || !email || !password) return { error: "Preencha tudo!" }
+
+  const existing = await prisma.user.findUnique({ where: { email } })
+  if (existing) return { error: "Email já cadastrado" }
+
+  await prisma.user.create({
+    data: { name, email, password, avatarUrl: "" }
+  })
+
+  redirect("/login")
+}
+
 export async function logout() {
-  // CORREÇÃO AQUI: await cookies()
   const cookieStore = await cookies()
   cookieStore.delete("userId")
-  
   redirect("/login")
 }
 
 export async function getCurrentUser() {
-  // CORREÇÃO AQUI: await cookies()
   const cookieStore = await cookies()
   const userId = cookieStore.get("userId")?.value
-  
+
   if (!userId) return null
+
   return await prisma.user.findUnique({ where: { id: userId } })
 }
 
-// --- AÇÕES DO MOTORISTA ---
+// ==========================================
+// 2. GESTÃO DA FILA (TICKETS)
+// ==========================================
 
-export async function createDriver(formData: FormData) {
+// Criar Ticket Manualmente
+export async function createAndQueueDriver(formData: FormData) {
   const name = formData.get("name") as string
-  const licensePlate = formData.get("licensePlate") as string
+  const licensePlate = (formData.get("licensePlate") as string).toUpperCase()
   const type = formData.get("type") as string
   const group = formData.get("group") as string
+  const romaneio = formData.get("romaneio") as string
 
-  if (!name || !licensePlate || !type || !group) return
+  // Verifica duplicidade no banco fixo (apenas alerta)
+  const existing = await prisma.savedDriver.findUnique({
+    where: { licensePlate }
+  })
 
+  if (existing) {
+    return { error: `Motorista com placa ${licensePlate} já cadastrado! Use a aba 'Lista de Motoristas'.` }
+  }
+
+  // 1. Salva no Banco Eterno
+  await prisma.savedDriver.create({
+    data: { name, licensePlate, type, group }
+  })
+
+  // 2. Cria o Ticket na Fila
   await prisma.driver.create({
     data: {
       name,
-      licensePlate: licensePlate.toUpperCase(),
+      licensePlate,
       type,
       group,
+      romaneio,
       status: "TODO",
       arrivalTime: new Date(),
     },
   })
+
   revalidatePath("/")
+  return { success: true }
 }
 
-export async function startService(driverId: number) {
-  const user = await getCurrentUser()
+// Usar Motorista da Lista (Cria Ticket)
+export async function queueExistingDriver(savedDriverId: number, romaneio: string) {
+  const saved = await prisma.savedDriver.findUnique({ where: { id: savedDriverId } })
   
-  if (!user) throw new Error("Você precisa estar logado!")
+  if (!saved) return
 
-  await prisma.driver.update({
-    where: { id: driverId },
+  await prisma.driver.create({
     data: {
-      status: "IN_PROGRESS",
-      currentHandlerId: user.id,
+      name: saved.name,
+      licensePlate: saved.licensePlate,
+      type: saved.type,
+      group: saved.group,
+      romaneio: romaneio,
+      status: "TODO",
+      arrivalTime: new Date(),
     },
   })
+  
   revalidatePath("/")
 }
 
-export async function advanceStep(driverId: number, nextStepIndex: number) {
-  await prisma.driver.update({
-    where: { id: driverId },
-    data: { currentStep: nextStepIndex }
-  })
+// Ações Gerais da Esteira (Start, Block, Finish)
+// Em app/actions.ts
+
+export async function ticketAction(driverId: number, action: string, reason?: string) {
+  const user = await getCurrentUser()
+  if (!user) return
+
+  if (action === 'START') {
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: { 
+        status: 'IN_PROGRESS', 
+        currentHandlerId: user.id,
+        // REMOVIDO: failedStep: null (Mantemos o erro para saber onde parou)
+      }
+    })
+  }
+  
+  if (action === 'BLOCK') {
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: { 
+        status: 'PENDING', 
+        failedStep: reason || "Motivo não informado" 
+      }
+    })
+  }
+
+  if (action === 'FINISH') {
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: { 
+        status: 'DONE',
+        currentHandlerId: null,
+        failedStep: null // Aqui sim limpamos, pois acabou
+      }
+    })
+  }
+
   revalidatePath("/")
 }
 
-export async function finishService(driverId: number) {
+// AVANÇAR ETAPA DO CHECKLIST (A função que estava faltando/duplicada)
+export async function advanceStep(driverId: number) {
   await prisma.driver.update({
     where: { id: driverId },
     data: { 
-      status: "DONE",
-      currentHandlerId: null, 
-    },
-  })
-  revalidatePath("/")
-}
-
-export async function sendToPending(driverId: number, reason: string, failedStepName: string) {
-  await prisma.driver.update({
-    where: { id: driverId },
-    data: { 
-      status: "PENDING",
-      pendingReason: reason,
-      failedStep: failedStepName,
-      currentHandlerId: null
-    },
-  })
-  revalidatePath("/")
-}
-
-// Adicione ao final de app/actions.ts
-
-export async function deleteDriver(driverId: number) {
-  await prisma.driver.delete({ where: { id: driverId } })
-  revalidatePath("/")
-}
-
-export async function updateDriver(driverId: number, formData: FormData) {
-  const name = formData.get("name") as string
-  const licensePlate = formData.get("licensePlate") as string
-  const type = formData.get("type") as string
-  const group = formData.get("group") as string
-
-  await prisma.driver.update({
-    where: { id: driverId },
-    data: {
-      name,
-      licensePlate: licensePlate.toUpperCase(),
-      type,
-      group
+      currentStep: { increment: 1 } 
     }
   })
   revalidatePath("/")
 }
 
-// Adicione ao final de app/actions.ts
+// Editar Ticket Ativo (Fila)
+export async function updateDriver(driverId: number, formData: FormData) {
+  const name = formData.get("name") as string
+  const licensePlate = formData.get("licensePlate") as string
+  const type = formData.get("type") as string
+  const group = formData.get("group") as string
+  const romaneio = formData.get("romaneio") as string
 
-// --- FUNCIONALIDADES SOCIAIS ---
+  await prisma.driver.update({
+    where: { id: driverId },
+    data: {
+      name,
+      licensePlate: licensePlate.toUpperCase(),
+      type,
+      group,
+      romaneio
+    }
+  })
+  revalidatePath("/")
+}
+
+// Excluir Ticket da Fila
+export async function deleteDriver(driverId: number) {
+  await prisma.driver.delete({ where: { id: driverId } })
+  revalidatePath("/")
+}
+
+// ==========================================
+// 3. GESTÃO DO BANCO DE DADOS (SAVED DRIVERS)
+// ==========================================
+
+export async function getSavedDrivers() {
+  return await prisma.savedDriver.findMany({
+    orderBy: { name: 'asc' }
+  })
+}
+
+export async function updateSavedDriver(id: number, formData: FormData) {
+  await prisma.savedDriver.update({
+    where: { id },
+    data: {
+      name: formData.get("name") as string,
+      licensePlate: (formData.get("licensePlate") as string).toUpperCase(),
+      type: formData.get("type") as string,
+      group: formData.get("group") as string,
+    }
+  })
+  revalidatePath("/drivers")
+}
+
+export async function deleteSavedDriver(id: number) {
+  await prisma.savedDriver.delete({ where: { id } })
+  revalidatePath("/drivers")
+}
+
+export async function getDriverHistory(licensePlate: string) {
+  return await prisma.driver.findMany({
+    where: { licensePlate: licensePlate },
+    orderBy: { arrivalTime: 'desc' },
+    include: { currentHandler: true }
+  })
+}
+
+// ==========================================
+// 4. SOCIAL E CHAT
+// ==========================================
 
 export async function sendMessage(content: string) {
   const user = await getCurrentUser()
@@ -188,7 +259,6 @@ export async function sendMessage(content: string) {
 }
 
 export async function getChatMessages() {
-  // Pega as últimas 50 mensagens
   return await prisma.message.findMany({
     take: 50,
     orderBy: { createdAt: 'asc' },
@@ -197,12 +267,11 @@ export async function getChatMessages() {
 }
 
 export async function getUsersWithStatus() {
-  // Busca todos os usuários
   const users = await prisma.user.findMany({
     include: {
-      // Traz os tickets que esse usuário está fazendo AGORA (IN_PROGRESS)
       activeTickets: {
-        where: { status: "IN_PROGRESS" }
+        where: { status: "IN_PROGRESS" },
+        include: { currentHandler: true } // Garante que trazemos dados completos
       }
     }
   })

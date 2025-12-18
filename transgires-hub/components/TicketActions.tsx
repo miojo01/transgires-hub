@@ -1,56 +1,44 @@
-"use client";
+"use client"
 
-import { Button } from "@/components/ui/button";
-import { Play, FileText } from "lucide-react";
-import { startService } from "@/app/actions";
-import { useTransition } from "react";
-import { WorkDesk } from "./WorkDesk"; // <--- Importamos a mesa
+import { Button } from "@/components/ui/button"
+import { Play } from "lucide-react"
+import { ticketAction } from "@/app/actions"
+import { useTransition } from "react"
+import { WorkDesk } from "./WorkDesk" // Importa a mesa que acabamos de criar
 
 interface TicketActionsProps {
-  driver: any;
-  currentUserId?: string;
+  driver: any
 }
 
 export function TicketActions({ driver }: TicketActionsProps) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition()
 
-  const handleStart = () => {
+  // Função para começar (Assumir)
+  function handleStart() {
     startTransition(async () => {
-      await startService(driver.id);
-    });
-  };
+      await ticketAction(driver.id, 'START')
+    })
+  }
 
-  // 1. Se já finalizou, não mostra nada
-  if (driver.status === "DONE") return <div className="text-green-600 font-bold text-xs">Concluído</div>;
-  if (driver.status === "PENDING") return <div className="text-orange-500 font-bold text-xs">Pendente</div>;
-
-  // 2. Se está na fila (TODO) -> Botão Assumir
-  if (driver.status === "TODO") {
+  // 1. Motorista na Fila -> Botão ASSUMIR
+  if (driver.status === 'TODO' || driver.status === 'PENDING') {
     return (
       <Button 
         size="sm" 
         onClick={handleStart} 
         disabled={isPending}
-        className="bg-gray-900 hover:bg-gray-700 transition-all active:scale-95 shadow-lg shadow-gray-900/10"
+        className="bg-black text-white hover:bg-gray-800 h-9 px-4 font-bold shadow-sm"
       >
-        <Play className="w-3.5 h-3.5 mr-2" />
-        {isPending ? "Assumindo..." : "Assumir"}
+        <Play className="w-3 h-3 mr-2 fill-current" />
+        {driver.status === 'PENDING' ? 'Retomar' : 'Assumir'}
       </Button>
-    );
+    )
   }
 
-  // 3. Se está Em Progresso -> Abre a Mesa de Trabalho
-  if (driver.status === "IN_PROGRESS") {
-    return (
-      <WorkDesk driver={driver}> 
-         {/* O WorkDesk precisa de um filho para ser o gatilho do clique */}
-         <Button size="sm" variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
-            <FileText className="w-3.5 h-3.5 mr-2" />
-            Continuar
-         </Button>
-      </WorkDesk>
-    );
+  // 2. Motorista em Andamento -> MOSTRA A MESA (Checklist)
+  if (driver.status === 'IN_PROGRESS') {
+    return <WorkDesk driver={driver} />
   }
 
-  return null;
+  return null
 }

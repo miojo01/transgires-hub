@@ -33,11 +33,13 @@ model Driver {
   id           Int      @id @default(autoincrement()) 
   name         String
   licensePlate String   
+  type         String   
+  group        String   
   
-  // SEPARAÇÃO REALIZADA:
-  type         String   // Frota, Agregado, Terceiro (Define o Checklist)
-  group        String   @default("VERMELHO") // Vermelho, Azul, Verde (Define a Cor)
-  
+  // --- NOVO CAMPO ---
+  romaneio     String?  // Ex: "ROM-998877"
+  // ------------------
+
   status       String   @default("TODO") 
   arrivalTime  DateTime 
 
@@ -74,4 +76,17 @@ model Message {
   
   userId    String
   user      User     @relation(fields: [userId], references: [id])
+}
+
+// Adicione isso no final do arquivo
+model SavedDriver {
+  id           Int      @id @default(autoincrement())
+  name         String
+  licensePlate String   @unique // <--- IMPORTANTE: Impede duplicidade
+  type         String   // Frota, Agregado, Terceiro
+  group        String   // Cor
+  phone        String?  // Opcional: Telefone
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

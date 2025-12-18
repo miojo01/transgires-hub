@@ -1,18 +1,17 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Send, Circle, Truck, MessageSquare } from "lucide-react"
+import { Send, Truck, MessageSquare, ExternalLink } from "lucide-react"
 import { useEffect, useState, useRef } from "react"
 import { sendMessage, getChatMessages, getUsersWithStatus } from "@/app/actions"
 import { User } from "@prisma/client"
+import { DriverDetailsModal } from "@/components/DriverDetailsModal" // <--- Importei aqui
 
-// Tipo para o usuário com os tickets ativos
+// Tipo atualizado para refletir que trazemos o Driver completo
 type UserWithStatus = User & {
-  activeTickets: { licensePlate: string; name: string }[]
+  activeTickets: any[] 
 }
 
 export function SocialSidebar({ currentUser }: { currentUser: any }) {
@@ -21,7 +20,6 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
   const [newMessage, setNewMessage] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Função para carregar dados (Polling simples a cada 3s)
   async function refreshData() {
     const u = await getUsersWithStatus()
     const m = await getChatMessages()
@@ -29,14 +27,12 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
     setMessages(m)
   }
 
-  // Efeito de "Tempo Real"
   useEffect(() => {
-    refreshData() // Carrega na hora
-    const interval = setInterval(refreshData, 3000) // Atualiza a cada 3s
+    refreshData()
+    const interval = setInterval(refreshData, 3000)
     return () => clearInterval(interval)
   }, [])
 
-  // Auto-scroll para a última mensagem
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -46,14 +42,11 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     if (!newMessage.trim()) return
-    
-    // Envia e limpa o campo imediatamente
     await sendMessage(newMessage)
     setNewMessage("")
     refreshData()
   }
 
-  // Função auxiliar para iniciais
   const getInitials = (name: string) => name.substring(0, 2).toUpperCase()
 
   return (
@@ -67,8 +60,7 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
         <div className="space-y-3">
           {users.map((user) => {
             const isMe = user.id === currentUser?.id
-            // Verifica se está trabalhando em algo
-            const activeJob = user.activeTickets[0] 
+            const activeJob = user.activeTickets[0] // Pega o primeiro ticket ativo
             const isBusy = !!activeJob
 
             return (
@@ -80,7 +72,6 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
                         {getInitials(user.name)}
                      </AvatarFallback>
                    </Avatar>
-                   {/* Bolinha de Status */}
                    <span className={`absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white ${isBusy ? 'bg-orange-500' : 'bg-green-500'}`} />
                 </div>
                 
@@ -91,10 +82,20 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
                     </p>
                   </div>
                   
-                  {/* O GRANDE DIFERENCIAL: Mostra o que ele está fazendo */}
                   {isBusy ? (
-                    <div className="text-[10px] text-orange-600 font-medium flex items-center gap-1 mt-0.5 animate-pulse">
-                       <span>Emitindo {activeJob.licensePlate}</span>
+                    <div className="mt-0.5">
+                       <DriverDetailsModal driver={activeJob}>
+                          <button className="text-[11px] text-orange-600 flex items-center gap-1 text-left transition-colors w-full">
+                             <span className="font-medium opacity-90">Emitindo</span>
+                             
+                             <span className="font-bold hover:underline truncate max-w-[110px]" title={activeJob.name}>
+                                {activeJob.name}
+                             </span>
+                             
+                             {/* Removi o 'ml-auto' daqui, agora ele obedece o gap-1 */}
+                             <ExternalLink className="w-3 h-3 opacity-50 shrink-0" />
+                          </button>
+                       </DriverDetailsModal>
                     </div>
                   ) : (
                     <p className="text-[10px] text-gray-400">Disponível</p>
@@ -106,7 +107,7 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
         </div>
       </div>
 
-      {/* 2. CHAT DO SETOR */}
+      {/* 2. CHAT (Mantido igual) */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="p-3 border-b border-gray-100 bg-gray-50/50">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
@@ -114,11 +115,8 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
             </h3>
         </div>
         
-        {/* Área das Mensagens */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30" ref={scrollRef}>
-           {messages.length === 0 && (
-             <p className="text-center text-xs text-gray-400 mt-10">Nenhuma mensagem hoje.</p>
-           )}
+           {messages.length === 0 && <p className="text-center text-xs text-gray-400 mt-10">Nenhuma mensagem.</p>}
            {messages.map((msg) => {
              const isMe = msg.userId === currentUser?.id
              return (
@@ -127,15 +125,11 @@ export function SocialSidebar({ currentUser }: { currentUser: any }) {
                      {!isMe && <span className="block text-[9px] text-gray-400 font-bold mb-0.5">{msg.user.name.split(" ")[0]}</span>}
                      {msg.content}
                   </div>
-                  <span className="text-[9px] text-gray-300 mt-1">
-                    {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                  </span>
                </div>
              )
            })}
         </div>
 
-        {/* Área de Digitar */}
         <div className="p-3 bg-white border-t border-gray-200">
            <form onSubmit={handleSend} className="flex gap-2">
               <Input 
