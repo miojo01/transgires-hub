@@ -13,14 +13,13 @@ import {
 import { logout } from "@/app/actions"
 import { User } from "@prisma/client"
 import { LogOut } from "lucide-react"
+import { ProfileDialog } from "./ProfileDialog" // <--- Importe aqui
 
 interface UserNavProps {
   currentUser: User | null
-  // allUsers removido pois não é mais necessário
 }
 
 export function UserNav({ currentUser }: UserNavProps) {
-  
   const getInitials = (name: string) => name ? name.substring(0, 2).toUpperCase() : "??"
 
   return (
@@ -33,7 +32,6 @@ export function UserNav({ currentUser }: UserNavProps) {
                 {currentUser ? getInitials(currentUser.name) : "?"}
             </AvatarFallback>
           </Avatar>
-          <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-black" />
         </Button>
       </DropdownMenuTrigger>
       
@@ -41,15 +39,18 @@ export function UserNav({ currentUser }: UserNavProps) {
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">{currentUser?.name}</p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {currentUser?.email}
-            </p>
+            <p className="text-xs leading-none text-muted-foreground">{currentUser?.email}</p>
           </div>
         </DropdownMenuLabel>
         
         <DropdownMenuSeparator />
         
-        <DropdownMenuItem onClick={() => logout()} className="text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50">
+        {/* Item de Perfil Customizado */}
+        <div className="px-1 py-1">
+            <ProfileDialog user={currentUser} />
+        </div>
+
+        <DropdownMenuItem onClick={() => logout()} className="text-red-600 cursor-pointer">
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sair do sistema</span>
         </DropdownMenuItem>

@@ -27,6 +27,7 @@ model User {
   messages      Message[]
   
   createdAt DateTime @default(now())
+  finishedDrivers Driver[] @relation("FinishedBy")
 }
 
 model Driver {
@@ -36,9 +37,10 @@ model Driver {
   type         String   
   group        String   
   
-  // --- NOVO CAMPO ---
   romaneio     String?  // Ex: "ROM-998877"
-  // ------------------
+
+  finishedById String? 
+  finishedBy   User?   @relation("FinishedBy", fields: [finishedById], references: [id])
 
   status       String   @default("TODO") 
   arrivalTime  DateTime 
@@ -90,3 +92,4 @@ model SavedDriver {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+

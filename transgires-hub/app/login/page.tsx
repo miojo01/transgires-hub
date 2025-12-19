@@ -13,12 +13,10 @@ export default function LoginPage() {
       
       <Card className="w-full max-w-md relative z-10 shadow-2xl border-t-4 border-red-600">
         <CardHeader className="text-center pb-6">
-          <CardTitle className="text-2xl font-bold">
-            <span className="text-red-600">Transgires</span> Billing Hub
-          </CardTitle>
+          <img src="/logo.png" alt="Transgires" className="h-20 mx-auto mb-4 object-contain" />
           <CardDescription>Entre para acessar a esteira de faturamento</CardDescription>
         </CardHeader>
-        
+
         <form action={login}>
           <CardContent className="space-y-4 pb-8"> {/* Aumentei o espaço aqui (pb-8) */}
             <div className="space-y-2">
